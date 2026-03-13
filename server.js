@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 const browserService = require('./services/browser');
 const authMiddleware = require('./middleware/auth');
 
@@ -11,6 +13,13 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Swagger docs (no auth required)
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'Claude API Docs',
+  customCss: '.swagger-ui .topbar { display: none }',
+}));
+
 app.use(authMiddleware);
 
 // Routes
@@ -63,12 +72,20 @@ async function start() {
     app.listen(PORT, () => {
       console.log('================================');
       console.log(`🌐 API Server running on: http://localhost:${PORT}`);
-      console.log(`📡 Chat endpoint:         POST http://localhost:${PORT}/api/chat`);
-      console.log(`🔑 Auth status:           GET  http://localhost:${PORT}/api/auth/status`);
-      console.log(`❤️  Health check:          GET  http://localhost:${PORT}/api/health`);
-      console.log(`📸 Screenshot:            GET  http://localhost:${PORT}/api/auth/screenshot`);
-      console.log(`🚪 Logout:                POST http://localhost:${PORT}/api/auth/logout`);
-      console.log(`🖥️  Remote login:          http://localhost:${PORT}/api/remote?key=${process.env.API_SECRET}`);
+      console.log('');
+      console.log('  📡  POST  /api/chat                 Send message (sync)');
+      console.log('  📡  POST  /api/chat  {async:true}   Send message (async → jobId)');
+      console.log('  📋  GET   /api/chat/result/:jobId   Poll async result');
+      console.log('  📋  GET   /api/chat/jobs             List active jobs');
+      console.log('  🆕  POST  /api/chat/new              Start new conversation');
+      console.log('  🔑  GET   /api/auth/status            Check login status');
+      console.log('  📸  GET   /api/auth/screenshot        Debug screenshot');
+      console.log('  🚪  POST  /api/auth/logout            Logout');
+      console.log('  ❤️   GET   /api/health                 Health check');
+      console.log('  🖥️   GET   /api/remote                 Remote login UI');
+      console.log('');
+      console.log(`  📖  Docs:  http://localhost:${PORT}/api/docs`);
+      console.log(`  🖥️   Login: http://localhost:${PORT}/api/remote?key=${process.env.API_SECRET}`);
       console.log('================================');
     });
   } catch (err) {
