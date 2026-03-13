@@ -1,0 +1,13 @@
+﻿{
+    "[class*=\"artifact\"]":  "2 found — \u003cDIV class=\"artifact-block-cell group/artifact-block flex flex-1 align-start justify-between w-full\"\u003e pos:(90,442) size:591x70 text:\"Paleolithic era quizCode · JSON Download\" | \u003cDIV class=\"absolute right-2 flex flex-1 overflow-hidden w-[52px] h-[71px] rounded-t-lg border-0.5 border-border\"\u003e pos:(94,453) size:59x74 text:\"\"",
+    "[class*=\"sidebar\"]":  "1 found — \u003cDIV class=\"fixed lg:sticky z-sidebar\"\u003e pos:(0,0) size:49x0 text:\"New chatSearchCustomizeChatsProjectsArtifactsCodeRecentsHideالأردن في العصر الحج\"",
+    "code":  "226 found — \u003cCODE class=\"font-mono text-xs break-all\"\u003e pos:(789,-4126) size:7x22 text:\"{\" | \u003cCODE class=\"font-mono text-xs break-all\"\u003e pos:(789,-4104) size:327x22 text:\"  \"lesson_title\": \"الأردن في العصر الحجري القديم\",\"",
+    "[role=\"textbox\"]":  "1 found — \u003cDIV class=\"tiptap ProseMirror ProseMirror-focused\"\u003e pos:(78,775) size:623x22 text:\"test\"",
+    "RIGHT_SIDE":  [
+                       "\u003cDIV class=\"\"\u003e size:120x120 text:\"```text\r\\nYou are an Elite Educational Content Developer and \"",
+                       "\u003cDIV class=\"relative\"\u003e size:120x120 text:\"```text\r\\nYou are an Elite Educational Content Developer and \"",
+                       "\u003cDIV class=\"group/thumbnail\"\u003e size:120x120 text:\"```text\r\\nYou are an Elite Educational Content Developer and \"",
+                       "\u003cBUTTON class=\"rounded-lg text-left block cursor-pointer font-ui transition-all rounded-lg bord\"\u003e size:120x120 text:\"```text\r\\nYou are an Elite Educational Content Developer and \"",
+                       "\u003cDIV class=\"max-md:absolute top-0 right-0 bottom-0 left-0 z-20 md:flex-grow-0 md:flex-shrink\"\u003e size:685x889 text:\"Paleolithic era quiz · JSONCopy  1 {  2   \"lesson_title\": \"ا\""
+                   ]
+}

@@ -251,6 +251,65 @@ router.get('/debug', async (req, res) => {
 });
 
 /**
+ * GET /api/remote/inspect
+ * Inspect the DOM for artifact panel elements
+ */
+router.get('/inspect', async (req, res) => {
+  try {
+    const page = browserService.getPage();
+    const inspection = await page.evaluate(() => {
+      const results = {};
+      
+      // Check for common artifact/code-related elements
+      const selectors = [
+        '.cm-content', '.cm-line', '.cm-editor',
+        '[class*="artifact"]', '[class*="code-block"]',
+        '[class*="panel"]', '[class*="sidebar"]',
+        '[class*="CodeMirror"]', '[class*="code-editor"]',
+        'pre', 'code',
+        '[role="code"]', '[role="textbox"]',
+        'button:has-text("Copy")',
+      ];
+      
+      for (const sel of selectors) {
+        try {
+          const els = document.querySelectorAll(sel);
+          if (els.length > 0) {
+            results[sel] = els.length + ' found — ' + Array.from(els).slice(0, 2).map(el => {
+              const tag = el.tagName;
+              const cls = (el.className || '').toString().substring(0, 100);
+              const text = (el.textContent || '').substring(0, 80).replace(/\n/g, '\\n');
+              const rect = el.getBoundingClientRect();
+              return `<${tag} class="${cls}"> pos:(${Math.round(rect.left)},${Math.round(rect.top)}) size:${Math.round(rect.width)}x${Math.round(rect.height)} text:"${text}"`;
+            }).join(' | ');
+          }
+        } catch {}
+      }
+      
+      // Find ALL elements on the right side (> 50% of screen width) with text
+      const allEls = document.querySelectorAll('*');
+      const rightSide = [];
+      for (const el of allEls) {
+        const rect = el.getBoundingClientRect();
+        if (rect.left > window.innerWidth * 0.4 && rect.width > 100 && rect.height > 100) {
+          const text = (el.textContent || '').substring(0, 60).replace(/\n/g, '\\n');
+          if (text.length > 20 && el.childElementCount < 5) {
+            rightSide.push(`<${el.tagName} class="${(el.className||'').toString().substring(0,80)}"> size:${Math.round(rect.width)}x${Math.round(rect.height)} text:"${text}"`);
+          }
+        }
+        if (rightSide.length >= 5) break;
+      }
+      results['RIGHT_SIDE'] = rightSide;
+      
+      return results;
+    });
+    res.json(inspection);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * POST /api/remote/click  { x, y }
  * x, y are viewport coordinates (0-1280, 0-800) — sent directly from canvas
  */

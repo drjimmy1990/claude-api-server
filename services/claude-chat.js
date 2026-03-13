@@ -409,58 +409,54 @@ async function scrapeArtifacts(page) {
 }
 
 /**
- * Read content from an open artifact side panel
+ * Read content from an open artifact side panel.
+ * Claude.ai renders each line of artifact content as a separate
+ * <code class="font-mono text-xs break-all"> element inside the right panel.
  */
 async function readArtifactPanel(page) {
   try {
-    // The artifact panel is typically on the right side with a code viewer
-    // Try multiple selectors for the panel content
     const content = await page.evaluate(() => {
-      // Look for the artifact panel — it's usually a side panel with code content
-      // Strategy 1: Find code mirror / code editor content
-      const codeEditors = document.querySelectorAll(
-        '.cm-content, [class*="code-editor"], [class*="artifact-content"], [class*="CodeMirror"]'
-      );
-      for (const editor of codeEditors) {
-        const text = editor.textContent?.trim();
-        if (text && text.length > 10) return { content: text, source: 'editor' };
-      }
-
-      // Strategy 2: Find pre/code blocks in the side panel area (right side)
-      const panels = document.querySelectorAll(
-        '[class*="side-panel"], [class*="artifact-view"], [class*="panel-content"]'
-      );
-      for (const panel of panels) {
-        const pre = panel.querySelector('pre, code');
-        if (pre) {
-          const text = pre.textContent?.trim();
-          if (text && text.length > 10) return { content: text, source: 'panel-pre' };
-        }
-      }
-
-      // Strategy 3: The artifact panel usually takes up the right half of screen
-      // Look for any large code/pre block that's NOT in the chat column
-      const allPre = document.querySelectorAll('pre');
-      for (const pre of allPre) {
-        const rect = pre.getBoundingClientRect();
-        // Artifact panel is typically on the RIGHT side (x > 50% of viewport)
-        if (rect.left > window.innerWidth * 0.35 && rect.width > 200) {
-          const text = pre.textContent?.trim();
-          if (text && text.length > 10) return { content: text, source: 'right-pre' };
-        }
-      }
-
-      // Strategy 4: Find line-numbered content (artifact panel shows line numbers)
-      const lineNumberedContent = document.querySelectorAll('[class*="line-number"], [class*="line-content"]');
-      if (lineNumberedContent.length > 0) {
-        // Get all line content elements and join them
-        const lines = [];
-        document.querySelectorAll('[class*="line-content"], .cm-line').forEach(line => {
-          lines.push(line.textContent || '');
+      // Strategy 1: Find all code.font-mono elements (line-by-line content)
+      // These are the individual lines in the artifact code viewer
+      const codeLines = document.querySelectorAll('code.font-mono');
+      if (codeLines.length > 0) {
+        // Filter to only lines on the right side (artifact panel, not chat)
+        const rightLines = Array.from(codeLines).filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.left > window.innerWidth * 0.35;
         });
-        if (lines.length > 0) {
-          const text = lines.join('\n').trim();
-          if (text.length > 10) return { content: text, source: 'lines' };
+        if (rightLines.length > 3) {
+          const text = rightLines.map(el => el.textContent || '').join('\n').trim();
+          if (text.length > 10) return { content: text, source: 'font-mono-lines', lineCount: rightLines.length };
+        }
+        // If not enough right-side lines, try all
+        if (codeLines.length > 3) {
+          const text = Array.from(codeLines).map(el => el.textContent || '').join('\n').trim();
+          if (text.length > 10) return { content: text, source: 'all-font-mono', lineCount: codeLines.length };
+        }
+      }
+
+      // Strategy 2: CodeMirror content
+      const cmContent = document.querySelector('.cm-content');
+      if (cmContent) {
+        const text = cmContent.textContent?.trim();
+        if (text && text.length > 10) return { content: text, source: 'cm-content' };
+      }
+
+      // Strategy 3: The right panel div with the full content
+      const rightPanel = document.querySelector('[class*="max-md:absolute"][class*="top-0"][class*="right-0"]');
+      if (rightPanel) {
+        // Get all pre/code inside it
+        const preEl = rightPanel.querySelector('pre');
+        if (preEl) {
+          const text = preEl.textContent?.trim();
+          if (text && text.length > 10) return { content: text, source: 'right-panel-pre' };
+        }
+        // Or get all text from code elements inside
+        const codes = rightPanel.querySelectorAll('code');
+        if (codes.length > 3) {
+          const text = Array.from(codes).map(c => c.textContent || '').join('\n').trim();
+          if (text.length > 10) return { content: text, source: 'right-panel-codes' };
         }
       }
 
@@ -469,53 +465,68 @@ async function readArtifactPanel(page) {
 
     if (!content) return null;
 
-    // Get title and language from the panel header
+    // Get title and language from the artifact panel header
     const meta = await page.evaluate(() => {
-      // Look for the header of the artifact panel
-      const headers = document.querySelectorAll('[class*="artifact"] h1, [class*="artifact"] h2, [class*="panel-header"]');
       let title = 'Artifact';
       let language = 'text';
 
-      for (const h of headers) {
-        const text = h.textContent?.trim();
-        if (text) { title = text; break; }
+      // The artifact card in chat has the title
+      const artifactCard = document.querySelector('.artifact-block-cell');
+      if (artifactCard) {
+        // Get text before "Code · JSON" or "Download"
+        const cardText = (artifactCard.textContent || '').trim();
+        const cleanTitle = cardText
+          .replace(/Code\s*·\s*\w+/i, '')
+          .replace(/Download/i, '')
+          .replace(/Copy/i, '')
+          .trim();
+        if (cleanTitle) title = cleanTitle;
+
+        // Detect language from card text
+        const lower = cardText.toLowerCase();
+        if (lower.includes('· json')) language = 'json';
+        else if (lower.includes('· python')) language = 'python';
+        else if (lower.includes('· javascript')) language = 'javascript';
+        else if (lower.includes('· html')) language = 'html';
+        else if (lower.includes('· css')) language = 'css';
+        else if (lower.includes('· typescript')) language = 'typescript';
       }
 
-      // Check for language indicator ("Code · JSON", "Code · Python", etc.)
-      const langIndicators = document.querySelectorAll('[class*="artifact"] span, [class*="panel-header"] span');
-      for (const span of langIndicators) {
-        const text = (span.textContent || '').toLowerCase().trim();
-        if (text.includes('json')) { language = 'json'; break; }
-        if (text.includes('python')) { language = 'python'; break; }
-        if (text.includes('javascript')) { language = 'javascript'; break; }
-        if (text.includes('html')) { language = 'html'; break; }
-        if (text.includes('css')) { language = 'css'; break; }
-        if (text.includes('typescript')) { language = 'typescript'; break; }
-      }
+      // Also check the panel header on the right
+      // It shows "Title · JSON" with Copy button
+      const allText = document.querySelectorAll('div');
+      for (const div of allText) {
+        const rect = div.getBoundingClientRect();
+        // Panel header is at the top-right area
+        if (rect.left > window.innerWidth * 0.4 && rect.top < 60 && rect.height < 40) {
+          const text = (div.textContent || '').trim();
+          if (text.includes('·') && text.length < 100) {
+            const parts = text.split('·');
+            const t = parts[0].replace(/Copy/gi, '').trim();
+            if (t && t.length > 2) title = t;
 
-      // Also try to get from the full header text
-      const fullHeader = document.querySelector('[class*="artifact-header"], [class*="panel-header"]');
-      if (fullHeader) {
-        const headerText = fullHeader.textContent || '';
-        if (headerText.toLowerCase().includes('json')) language = 'json';
-        else if (headerText.toLowerCase().includes('python')) language = 'python';
-        else if (headerText.toLowerCase().includes('javascript')) language = 'javascript';
-
-        // Extract title (usually before the language indicator)
-        const parts = headerText.split('·').map(s => s.trim());
-        if (parts[0]) title = parts[0].replace(/^(Copy|Download)\s*/gi, '').trim();
+            const langPart = (parts[1] || '').toLowerCase().trim();
+            if (langPart.includes('json')) language = 'json';
+            else if (langPart.includes('python')) language = 'python';
+            else if (langPart.includes('javascript')) language = 'javascript';
+            break;
+          }
+        }
       }
 
       return { title, language };
     });
 
+    console.log(`📋 Artifact read: "${meta.title}" (${meta.language}, ${content.content.length} chars via ${content.source})`);
+
     return {
       type: 'artifact',
       language: meta.language,
-      title: meta.title || 'Artifact',
+      title: meta.title,
       content: content.content,
     };
-  } catch {
+  } catch (err) {
+    console.error('❌ Error reading artifact panel:', err.message);
     return null;
   }
 }
