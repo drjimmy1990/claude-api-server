@@ -67,6 +67,7 @@ async function start() {
       console.log(`🔑 Auth status:           GET  http://localhost:${PORT}/api/auth/status`);
       console.log(`❤️  Health check:          GET  http://localhost:${PORT}/api/health`);
       console.log(`📸 Screenshot:            GET  http://localhost:${PORT}/api/auth/screenshot`);
+      console.log(`🚪 Logout:                POST http://localhost:${PORT}/api/auth/logout`);
       console.log(`🖥️  Remote login:          http://localhost:${PORT}/api/remote?key=${process.env.API_SECRET}`);
       console.log('================================');
     });
