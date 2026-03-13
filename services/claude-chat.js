@@ -327,70 +327,224 @@ async function scrapeLatestResponse(page) {
 }
 
 /**
- * Scrape any artifacts (code blocks, etc.) from Claude's latest response
+ * Scrape any artifacts (code blocks, etc.) from Claude's latest response.
+ * Artifacts in Claude.ai appear as clickable cards in the chat.
+ * Clicking them opens a side panel with the full content.
+ * We click each one, read the content, then close the panel.
  */
 async function scrapeArtifacts(page) {
-  const artifacts = await page.evaluate(() => {
-    const results = [];
+  const results = [];
 
-    // Look for artifact panels (Claude.ai shows artifacts in a side panel)
-    const artifactSelectors = [
-      '[data-testid="artifact"]',
-      '[class*="artifact"]',
-      '[class*="code-block"]',
-    ];
+  // First: check if an artifact panel is already open
+  const panelContent = await readArtifactPanel(page);
+  if (panelContent) {
+    results.push(panelContent);
+    // Close the panel
+    await closeArtifactPanel(page);
+  }
 
-    // Also scrape code blocks from the response
-    const codeBlocks = document.querySelectorAll('pre code, pre');
-    codeBlocks.forEach((block, index) => {
-      const code = block.textContent || '';
-      if (code.trim().length === 0) return;
+  // Find artifact cards/buttons in the chat (clickable cards with download/copy)
+  const artifactCards = await page.$$('button[class*="artifact"], [data-testid*="artifact"], div[class*="artifact-card"]');
 
-      // Try to detect language from class
-      let language = 'text';
-      const classes = block.className || '';
-      const langMatch = classes.match(/language-(\w+)/);
-      if (langMatch) {
-        language = langMatch[1];
-      }
-
-      // Try to get title from a sibling or parent label
-      let title = `code-block-${index + 1}`;
-      const header = block.closest('div')?.querySelector('[class*="header"], [class*="title"], [class*="filename"]');
-      if (header) {
-        title = header.textContent.trim() || title;
-      }
-
-      results.push({
-        type: 'code',
-        language,
-        title,
-        content: code.trim(),
+  // Also try to find artifact-like elements by structure (the card with title + "Code · JSON" etc)
+  if (artifactCards.length === 0) {
+    // Try broader search for artifact download buttons
+    const downloadBtns = await page.$$('button:has-text("Download")');
+    for (const btn of downloadBtns) {
+      // Check if this is inside an artifact card
+      const parent = await btn.evaluateHandle(el => {
+        let node = el.parentElement;
+        for (let i = 0; i < 5 && node; i++) {
+          if (node.querySelector('button') && node.textContent.includes('Download')) {
+            return node;
+          }
+          node = node.parentElement;
+        }
+        return null;
       });
+
+      if (parent) {
+        try {
+          await parent.asElement()?.click();
+          await page.waitForTimeout(1500);
+          const content = await readArtifactPanel(page);
+          if (content) results.push(content);
+          await closeArtifactPanel(page);
+        } catch { /* continue */ }
+      }
+    }
+  }
+
+  // Click each artifact card to open it and read content
+  for (const card of artifactCards) {
+    try {
+      await card.click();
+      await page.waitForTimeout(1500);
+      const content = await readArtifactPanel(page);
+      if (content && !results.find(r => r.content === content.content)) {
+        results.push(content);
+      }
+      await closeArtifactPanel(page);
+    } catch { /* continue */ }
+  }
+
+  // Fallback: scrape inline code blocks from the chat response
+  if (results.length === 0) {
+    const inlineCode = await page.evaluate(() => {
+      const blocks = [];
+      document.querySelectorAll('pre code, pre').forEach((block, i) => {
+        const code = block.textContent || '';
+        if (code.trim().length === 0) return;
+        let lang = 'text';
+        const langMatch = (block.className || '').match(/language-(\w+)/);
+        if (langMatch) lang = langMatch[1];
+        blocks.push({ type: 'code', language: lang, title: `code-block-${i + 1}`, content: code.trim() });
+      });
+      return blocks;
+    });
+    results.push(...inlineCode);
+  }
+
+  return results;
+}
+
+/**
+ * Read content from an open artifact side panel
+ */
+async function readArtifactPanel(page) {
+  try {
+    // The artifact panel is typically on the right side with a code viewer
+    // Try multiple selectors for the panel content
+    const content = await page.evaluate(() => {
+      // Look for the artifact panel — it's usually a side panel with code content
+      // Strategy 1: Find code mirror / code editor content
+      const codeEditors = document.querySelectorAll(
+        '.cm-content, [class*="code-editor"], [class*="artifact-content"], [class*="CodeMirror"]'
+      );
+      for (const editor of codeEditors) {
+        const text = editor.textContent?.trim();
+        if (text && text.length > 10) return { content: text, source: 'editor' };
+      }
+
+      // Strategy 2: Find pre/code blocks in the side panel area (right side)
+      const panels = document.querySelectorAll(
+        '[class*="side-panel"], [class*="artifact-view"], [class*="panel-content"]'
+      );
+      for (const panel of panels) {
+        const pre = panel.querySelector('pre, code');
+        if (pre) {
+          const text = pre.textContent?.trim();
+          if (text && text.length > 10) return { content: text, source: 'panel-pre' };
+        }
+      }
+
+      // Strategy 3: The artifact panel usually takes up the right half of screen
+      // Look for any large code/pre block that's NOT in the chat column
+      const allPre = document.querySelectorAll('pre');
+      for (const pre of allPre) {
+        const rect = pre.getBoundingClientRect();
+        // Artifact panel is typically on the RIGHT side (x > 50% of viewport)
+        if (rect.left > window.innerWidth * 0.35 && rect.width > 200) {
+          const text = pre.textContent?.trim();
+          if (text && text.length > 10) return { content: text, source: 'right-pre' };
+        }
+      }
+
+      // Strategy 4: Find line-numbered content (artifact panel shows line numbers)
+      const lineNumberedContent = document.querySelectorAll('[class*="line-number"], [class*="line-content"]');
+      if (lineNumberedContent.length > 0) {
+        // Get all line content elements and join them
+        const lines = [];
+        document.querySelectorAll('[class*="line-content"], .cm-line').forEach(line => {
+          lines.push(line.textContent || '');
+        });
+        if (lines.length > 0) {
+          const text = lines.join('\n').trim();
+          if (text.length > 10) return { content: text, source: 'lines' };
+        }
+      }
+
+      return null;
     });
 
-    // Look for artifact buttons/panels
-    for (const sel of artifactSelectors) {
-      const els = document.querySelectorAll(sel);
-      els.forEach((el) => {
-        const title = el.querySelector('[class*="title"], [class*="name"]')?.textContent?.trim() || 'Artifact';
-        const content = el.querySelector('pre, code, [class*="content"]')?.textContent?.trim() || el.textContent?.trim();
+    if (!content) return null;
 
-        if (content && !results.find(r => r.content === content)) {
-          results.push({
-            type: 'artifact',
-            language: 'text',
-            title,
-            content,
-          });
+    // Get title and language from the panel header
+    const meta = await page.evaluate(() => {
+      // Look for the header of the artifact panel
+      const headers = document.querySelectorAll('[class*="artifact"] h1, [class*="artifact"] h2, [class*="panel-header"]');
+      let title = 'Artifact';
+      let language = 'text';
+
+      for (const h of headers) {
+        const text = h.textContent?.trim();
+        if (text) { title = text; break; }
+      }
+
+      // Check for language indicator ("Code · JSON", "Code · Python", etc.)
+      const langIndicators = document.querySelectorAll('[class*="artifact"] span, [class*="panel-header"] span');
+      for (const span of langIndicators) {
+        const text = (span.textContent || '').toLowerCase().trim();
+        if (text.includes('json')) { language = 'json'; break; }
+        if (text.includes('python')) { language = 'python'; break; }
+        if (text.includes('javascript')) { language = 'javascript'; break; }
+        if (text.includes('html')) { language = 'html'; break; }
+        if (text.includes('css')) { language = 'css'; break; }
+        if (text.includes('typescript')) { language = 'typescript'; break; }
+      }
+
+      // Also try to get from the full header text
+      const fullHeader = document.querySelector('[class*="artifact-header"], [class*="panel-header"]');
+      if (fullHeader) {
+        const headerText = fullHeader.textContent || '';
+        if (headerText.toLowerCase().includes('json')) language = 'json';
+        else if (headerText.toLowerCase().includes('python')) language = 'python';
+        else if (headerText.toLowerCase().includes('javascript')) language = 'javascript';
+
+        // Extract title (usually before the language indicator)
+        const parts = headerText.split('·').map(s => s.trim());
+        if (parts[0]) title = parts[0].replace(/^(Copy|Download)\s*/gi, '').trim();
+      }
+
+      return { title, language };
+    });
+
+    return {
+      type: 'artifact',
+      language: meta.language,
+      title: meta.title || 'Artifact',
+      content: content.content,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Close an open artifact side panel
+ */
+async function closeArtifactPanel(page) {
+  try {
+    // Try clicking the X/close button on the artifact panel
+    const closeSelectors = [
+      '[data-testid="close-artifact"]',
+      'button[aria-label="Close"]',
+      'button[aria-label="Close artifact"]',
+    ];
+    for (const sel of closeSelectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 500 })) {
+          await btn.click();
+          await page.waitForTimeout(500);
+          return;
         }
-      });
+      } catch { /* continue */ }
     }
-
-    return results;
-  });
-
-  return artifacts;
+    // Fallback: press Escape
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+  } catch { /* ignore */ }
 }
 
 /**
