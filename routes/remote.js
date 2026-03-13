@@ -171,13 +171,27 @@ router.get('/', (req, res) => {
       logEl.prepend(d);
     }
 
+    let viewportW = 1280, viewportH = 800;
+
     async function refreshScreen() {
       try {
         const r = await fetch('/api/remote/screenshot', { headers });
         if (!r.ok) throw new Error('Screenshot failed');
+        // Read viewport size from response headers
+        const vw = r.headers.get('x-viewport-width');
+        const vh = r.headers.get('x-viewport-height');
+        if (vw) viewportW = parseInt(vw);
+        if (vh) viewportH = parseInt(vh);
         const blob = await r.blob();
         screenImg.src = URL.createObjectURL(blob);
-        log('Screenshot refreshed', 'ok');
+        // When image loads, double-check with DPI ratio
+        screenImg.onload = () => {
+          const dpr = screenImg.naturalWidth / viewportW;
+          if (dpr > 1.5) {
+            log('DPR detected: ' + dpr.toFixed(1) + ', viewport: ' + viewportW + 'x' + viewportH, 'ok');
+          }
+        };
+        log('Screenshot refreshed (viewport: ' + viewportW + 'x' + viewportH + ')', 'ok');
       } catch(e) { log('Error: ' + e.message, 'err'); }
     }
 
@@ -193,23 +207,24 @@ router.get('/', (req, res) => {
       }
     }
 
-    // Click on screenshot
-    screenWrap.addEventListener('click', async (e) => {
-      const rect = screenImg.getBoundingClientRect();
-      const scaleX = screenImg.naturalWidth / rect.width;
-      const scaleY = screenImg.naturalHeight / rect.height;
-      const x = Math.round((e.clientX - rect.left) * scaleX);
-      const y = Math.round((e.clientY - rect.top) * scaleY);
+    // Click on screenshot — bind to the IMAGE directly
+    screenImg.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const rect = e.target.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      const x = Math.round(clickX / rect.width * viewportW);
+      const y = Math.round(clickY / rect.height * viewportH);
 
-      // Show click marker
+      // Show click marker on wrapper
       const marker = document.createElement('div');
       marker.className = 'click-marker';
-      marker.style.left = (e.clientX - rect.left) + 'px';
-      marker.style.top = (e.clientY - rect.top) + 'px';
+      marker.style.left = (clickX) + 'px';
+      marker.style.top = (clickY) + 'px';
       screenWrap.appendChild(marker);
       setTimeout(() => marker.remove(), 600);
 
-      log('Clicking at (' + x + ', ' + y + ')...');
+      log('Click at (' + x + ', ' + y + ') viewport [img: ' + Math.round(clickX) + ',' + Math.round(clickY) + ' of ' + Math.round(rect.width) + 'x' + Math.round(rect.height) + ']');
       try {
         const r = await fetch('/api/remote/click', {
           method: 'POST', headers,
@@ -299,8 +314,12 @@ router.get('/', (req, res) => {
 router.get('/screenshot', async (req, res) => {
   try {
     const page = browserService.getPage();
+    const viewport = page.viewportSize() || { width: 1280, height: 800 };
     const buffer = await page.screenshot({ type: 'png', fullPage: false });
     res.set('Content-Type', 'image/png');
+    res.set('x-viewport-width', String(viewport.width));
+    res.set('x-viewport-height', String(viewport.height));
+    res.set('Access-Control-Expose-Headers', 'x-viewport-width, x-viewport-height');
     res.send(buffer);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -5,6 +5,21 @@ const path = require('path');
 const fs = require('fs');
 
 /**
+ * POST /api/auth/logout
+ * Log out of claude.ai
+ */
+router.post('/logout', async (req, res) => {
+  try {
+    const page = browserService.getPage();
+    await page.goto('https://claude.ai/logout', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(3000);
+    res.json({ success: true, message: 'Logged out of claude.ai', currentUrl: page.url() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * GET /api/auth/status
  * Check if the browser is logged into claude.ai
  */

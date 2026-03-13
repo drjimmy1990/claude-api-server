@@ -8,7 +8,7 @@ function authMiddleware(req, res, next) {
     return next();
   }
 
-  const apiKey = req.headers['x-api-key'];
+  const apiKey = req.headers['x-api-key'] || req.query.key;
   const secret = process.env.API_SECRET;
 
   // If no secret is configured, skip auth (dev mode)
