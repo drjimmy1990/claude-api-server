@@ -4,7 +4,7 @@ FROM node:18-slim
 # Xvfb provides a virtual display so full browser works without a monitor
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates fonts-noto fonts-noto-color-emoji \
-    xvfb \
+    xvfb xauth \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
