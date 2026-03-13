@@ -16,6 +16,7 @@ app.use(authMiddleware);
 // Routes
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/remote', require('./routes/remote'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -66,6 +67,7 @@ async function start() {
       console.log(`🔑 Auth status:           GET  http://localhost:${PORT}/api/auth/status`);
       console.log(`❤️  Health check:          GET  http://localhost:${PORT}/api/health`);
       console.log(`📸 Screenshot:            GET  http://localhost:${PORT}/api/auth/screenshot`);
+      console.log(`🖥️  Remote login:          http://localhost:${PORT}/api/remote?key=${process.env.API_SECRET}`);
       console.log('================================');
     });
   } catch (err) {
