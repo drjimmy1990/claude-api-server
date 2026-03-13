@@ -13,7 +13,16 @@ let page = null;
  * Initialize the browser with persistent context
  */
 async function init() {
-  const headless = process.env.HEADLESS === 'true';
+  const wantHeadless = process.env.HEADLESS === 'true';
+  
+  // If Xvfb is running (DISPLAY env var set), use full browser even in "headless" mode
+  // This bypasses Cloudflare bot detection (headless-shell is easily detected)
+  const hasDisplay = !!process.env.DISPLAY;
+  const headless = wantHeadless && !hasDisplay;
+
+  if (wantHeadless && hasDisplay) {
+    console.log('🖥️  Xvfb detected — using full browser with virtual display');
+  }
 
   // Ensure browser-data directory exists
   if (!fs.existsSync(BROWSER_DATA_DIR)) {
@@ -30,6 +39,7 @@ async function init() {
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
+      '--disable-dev-shm-usage',
     ],
   });
 

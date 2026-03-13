@@ -1,9 +1,10 @@
 FROM node:18-slim
 
-# Install system dependencies for Playwright Chromium
-# Using playwright's own install-deps ensures ALL required libs are present
+# Install system dependencies for FULL Chromium (not headless shell)
+# Xvfb provides a virtual display so full browser works without a monitor
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates fonts-noto fonts-noto-color-emoji \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,14 +13,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Install Chromium for Playwright + ALL system dependencies
+# Install FULL Chromium (not headless shell) + ALL system dependencies
 RUN npx playwright install chromium && npx playwright install-deps chromium
 
 # Copy app source
 COPY . .
-
-# Don't copy local browser data or env
-# (handled by .dockerignore)
 
 # Expose port
 EXPOSE 3000
@@ -27,5 +25,6 @@ EXPOSE 3000
 # Browser data persists in a volume
 VOLUME ["/app/browser-data"]
 
-# Start the server
-CMD ["node", "server.js"]
+# Use Xvfb to run full browser with virtual display
+# This bypasses Cloudflare bot detection (headless shell is easily detected)
+CMD ["sh", "-c", "xvfb-run --auto-servernum --server-args='-screen 0 1280x800x24' node server.js"]

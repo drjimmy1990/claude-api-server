@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    shm_size: '1gb'
     environment:
       - PORT=3000
       - API_SECRET=${API_SECRET:-changeme}
