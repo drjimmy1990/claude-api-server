@@ -1,0 +1,23 @@
+services:
+  claude-api:
+    build: .
+    container_name: claude-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - API_SECRET=${API_SECRET:-changeme}
+      - HEADLESS=true
+    volumes:
+      # Persist browser session (login data)
+      - browser-data:/app/browser-data
+      # Mount .env from host
+      - ./.env:/app/.env:ro
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+volumes:
+  browser-data:

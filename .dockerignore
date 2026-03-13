@@ -1,0 +1,14 @@
+node_modules/
+browser-data/
+screenshots/
+.env
+.git
+.gitignore
+*.md
+*.ps1
+*.log
+test-output.json
+dom-inspect.json
+npm-debug.log*
+Thumbs.db
+.DS_Store
