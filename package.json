@@ -1,16 +1,21 @@
 {
   "name": "claude-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "Unofficial REST API server for Claude.ai via browser automation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "setup": "npm install && npx playwright install chromium && npx playwright install-deps chromium",
+    "postinstall": "npx playwright install chromium"
   },
-  "keywords": [],
+  "keywords": ["claude", "api", "automation", "playwright"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
